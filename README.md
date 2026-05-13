@@ -87,28 +87,71 @@ nuke --nc -i -X WriteNodeName script.nknc
 
 ---
 
+## Prerequisites  
+
+- [Python 3.7+](https://www.python.org/downloads/)  
+- [PyQt5](https://pypi.org/project/PyQt5/)  
+- Nuke (installed on your system)  
+
+---
+
 ## Installation  
 
-1. Ensure Python 3 is installed  
-2. Install required dependency:
+### 1. Download the tool
+
+**Option A — Clone with Git:**
+```
+git clone https://github.com/your-username/batch-renderer.git
+cd batch-renderer
+```
+
+**Option B — Download ZIP:**  
+Click **Code → Download ZIP** on the GitHub page, then extract the folder.
+
+---
+
+### 2. Install Python
+
+If you don't have Python installed:
+
+1. Go to [python.org/downloads](https://www.python.org/downloads/)
+2. Download and run the installer for your OS
+3. **Windows:** check "Add Python to PATH" during installation
+4. Verify the installation by opening a terminal and running:
+
+```
+python --version
+```
+
+---
+
+### 3. Install PyQt5
+
+Open a terminal (or Command Prompt on Windows) inside the project folder and run:
 
 ```
 pip install PyQt5
 ```
 
-3. Run the script:
+If `pip` is not found, try:
+
+```
+python -m pip install PyQt5
+```
+
+---
+
+### 4. Run the tool
 
 ```
 python batchRenderer.py
 ```
 
----
+On some systems you may need to use `python3` instead:
 
-## Prerequisites  
-
-- Nuke (installed on your system)  
-- Python 3  
-- PyQt5  
+```
+python3 batchRenderer.py
+```
 
 ---
 
