@@ -58,6 +58,8 @@ class NukeScriptParser:
             print(f"Error parsing Nuke file: {e}")
             return []
 
+        root_first, root_last = self._parse_root_frame_range(content)
+
         write_nodes = []
         for block in content.split("Write {")[1:]:
             end_idx = block.find("\n}")
@@ -65,8 +67,27 @@ class NukeScriptParser:
                 block = block[:end_idx]
             name = self._extract_attribute(block, "name") or "Write"
             output_file = self._extract_attribute(block, "file") or ""
-            write_nodes.append({'name': name, 'file': output_file})
+            first_frame = self._parse_int(self._extract_attribute(block, "first"), root_first)
+            last_frame = self._parse_int(self._extract_attribute(block, "last"), root_last)
+            write_nodes.append({
+                'name': name,
+                'file': output_file,
+                'first_frame': first_frame,
+                'last_frame': last_frame,
+            })
         return write_nodes
+
+    def _parse_root_frame_range(self, content):
+        parts = content.split("Root {")
+        if len(parts) < 2:
+            return 1, 1
+        root_block = parts[1]
+        end_idx = root_block.find("\n}")
+        if end_idx != -1:
+            root_block = root_block[:end_idx]
+        first = self._parse_int(self._extract_attribute(root_block, "first_frame"), 1)
+        last = self._parse_int(self._extract_attribute(root_block, "last_frame"), 1)
+        return first, last
 
     def _extract_attribute(self, text, attr_name):
         for line in text.split("\n"):
@@ -78,12 +99,18 @@ class NukeScriptParser:
                 return value
         return None
 
+    def _parse_int(self, value, default):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
 
 class BatchRenderTool(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Nuke Batch Renderer")
-        self.setMinimumWidth(800)
+        self.setMinimumWidth(900)
         self.setMinimumHeight(600)
         self.nuke_files = []
         self.node_models = []
@@ -135,9 +162,15 @@ class BatchRenderTool(QtWidgets.QMainWindow):
         nodes_layout = QtWidgets.QVBoxLayout()
         nodes_group.setLayout(nodes_layout)
         self.table = QtWidgets.QTableWidget()
-        self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["Render", "Name", "Output Path", "Script File"])
-        self.table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
+        self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels(["Render", "Name", "Start", "End", "Output Path", "Script File"])
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QtWidgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(5, QtWidgets.QHeaderView.ResizeToContents)
         nodes_layout.addWidget(self.table)
         btn_layout = QtWidgets.QHBoxLayout()
         self.up_btn = QtWidgets.QPushButton("Move Up")
@@ -234,10 +267,13 @@ class BatchRenderTool(QtWidgets.QMainWindow):
                     'file': node['file'],
                     'script': script_file,
                     'chk': chk,
+                    'first_frame': node['first_frame'],
+                    'last_frame': node['last_frame'],
                 })
         self.update_table()
 
     def update_table(self):
+        self.table.blockSignals(True)
         self.table.setRowCount(len(self.node_models))
         for i, m in enumerate(self.node_models):
             chk_widget = QtWidgets.QWidget()
@@ -247,6 +283,13 @@ class BatchRenderTool(QtWidgets.QMainWindow):
             chk_layout.setContentsMargins(0, 0, 0, 0)
 
             name_item = QtWidgets.QTableWidgetItem(m['name'])
+            name_item.setFlags(name_item.flags() & ~QtCore.Qt.ItemIsEditable)
+
+            start_item = QtWidgets.QTableWidgetItem(str(m['first_frame']))
+            start_item.setTextAlignment(QtCore.Qt.AlignCenter)
+
+            end_item = QtWidgets.QTableWidgetItem(str(m['last_frame']))
+            end_item.setTextAlignment(QtCore.Qt.AlignCenter)
 
             path_item = QtWidgets.QTableWidgetItem(m['file'])
             path_item.setFlags(path_item.flags() & ~QtCore.Qt.ItemIsEditable)
@@ -256,17 +299,31 @@ class BatchRenderTool(QtWidgets.QMainWindow):
 
             self.table.setCellWidget(i, 0, chk_widget)
             self.table.setItem(i, 1, name_item)
-            self.table.setItem(i, 2, path_item)
-            self.table.setItem(i, 3, script_item)
+            self.table.setItem(i, 2, start_item)
+            self.table.setItem(i, 3, end_item)
+            self.table.setItem(i, 4, path_item)
+            self.table.setItem(i, 5, script_item)
+        self.table.blockSignals(False)
+
+    def _sync_frame_range_from_table(self):
+        for i, m in enumerate(self.node_models):
+            try:
+                m['first_frame'] = int(self.table.item(i, 2).text())
+            except (ValueError, AttributeError):
+                pass
+            try:
+                m['last_frame'] = int(self.table.item(i, 3).text())
+            except (ValueError, AttributeError):
+                pass
 
     def toggle_non_commercial(self, state):
         self.non_commercial_mode = (state == QtCore.Qt.Checked)
 
-    def _build_render_cmd(self, node, script_path):
+    def _build_render_cmd(self, node):
         cmd = [self.nuke_path]
         if self.non_commercial_mode:
             cmd.append('--nc')
-        cmd.extend(['-i', '-X', node['name'], script_path])
+        cmd.extend(['-F', f"{node['first_frame']}-{node['last_frame']}", '-i', '-X', node['name'], node['script']])
         return cmd
 
     def _run_nuke(self, cmd):
@@ -304,6 +361,7 @@ class BatchRenderTool(QtWidgets.QMainWindow):
         if not self.nuke_path or not os.path.exists(self.nuke_path):
             QtWidgets.QMessageBox.warning(self, "Error", "Please select a valid Nuke Location!")
             return
+        self._sync_frame_range_from_table()
         nodes = self.get_nodes_to_render()
         if not nodes:
             QtWidgets.QMessageBox.warning(self, "Error", "Select at least one node!")
@@ -319,9 +377,13 @@ class BatchRenderTool(QtWidgets.QMainWindow):
             if progress.wasCanceled():
                 break
             progress.setValue(i)
-            progress.setLabelText(f"Rendering {node['name']} from {os.path.basename(node['script'])}...")
+            progress.setLabelText(
+                f"Rendering {node['name']} "
+                f"(frames {node['first_frame']}-{node['last_frame']}) "
+                f"from {os.path.basename(node['script'])}..."
+            )
             try:
-                returncode, output = self._run_nuke(self._build_render_cmd(node, node['script']))
+                returncode, output = self._run_nuke(self._build_render_cmd(node))
                 if returncode != 0:
                     errors.append(f"Error rendering {node['name']}: {output}")
             except Exception as e:
