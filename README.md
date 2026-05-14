@@ -7,18 +7,19 @@
 
 A standalone PyQt5 desktop tool that batch renders Write nodes from multiple Nuke scripts — without opening Nuke manually for each file.
 
-This tool parses `.nk` and `.nknc` files, extracts Write nodes, lets you choose the render order, and executes renders directly through the Nuke executable.
+This tool parses `.nk` files, extracts Write nodes, lets you choose the render order and frame ranges, and executes renders directly through the Nuke executable.
 
 ---
 
 ## Features  
 
 ### Parse Nuke Scripts  
-- Reads `.nk` and `.nknc` (Non-Commercial) files  
+- Reads `.nk` files  
 - Detects all Write nodes  
 - Extracts:
   - Node name  
   - Output file path  
+  - Frame range (from the Write node or the Root block)
   - Source script  
 
 No need to open scripts inside Nuke to check Write nodes.
@@ -26,16 +27,16 @@ No need to open scripts inside Nuke to check Write nodes.
 ---
 
 ### Batch Render Multiple Scripts  
-- Add multiple `.nk` / `.nknc` files  
+- Add multiple `.nk` files  
 - Import all Write nodes at once  
 - Select which nodes to render  
 - Render using Nuke's command-line (`-X` flag)  
 
 ---
 
-### Non-Commercial Mode  
-- Enable the **Non-Commercial Mode** checkbox to pass `--nc` to Nuke  
-- When importing `.nknc` files, the tool automatically prompts to enable this mode  
+### Custom Frame Ranges  
+- Frame range is automatically read from each Write node (or falls back to the script's Root frame range)  
+- Edit Start and End frames directly in the table before rendering  
 
 ---
 
@@ -67,22 +68,16 @@ No need to open scripts inside Nuke to check Write nodes.
 
 1. Launch the tool  
 2. Select your Nuke executable location  
-3. Add `.nk` or `.nknc` script files  
+3. Add `.nk` script files  
 4. Click **Import Write Nodes**  
-5. Select nodes you want to render  
-6. Adjust render order if needed  
+5. Select the nodes you want to render  
+6. Adjust frame ranges and render order if needed  
 7. Click **Render**  
 
 The tool executes renders using:
 
 ```
-nuke -i -X WriteNodeName script.nk
-```
-
-With Non-Commercial Mode enabled:
-
-```
-nuke --nc -i -X WriteNodeName script.nknc
+nuke -F start-end -i -X WriteNodeName script.nk
 ```
 
 ---
@@ -101,7 +96,7 @@ nuke --nc -i -X WriteNodeName script.nknc
 
 **Option A — Clone with Git:**
 ```
-git clone https://github.com/your-username/batch-renderer.git
+git clone https://github.com/NirajDudani/batch-renderer.git
 cd batch-renderer
 ```
 
