@@ -52,17 +52,19 @@ class NukeScriptParser:
 
     def parse_nuke_file(self, script_path):
         try:
-            with open(script_path, 'r') as f:
+            with open(script_path, 'r', encoding='utf-8', errors='replace') as f:
                 content = f.read()
         except Exception as e:
-            print(f"Error parsing Nuke file: {e}")
+            print(f"[ERROR] Could not open file: {e}")
             return []
+
+        blocks = content.split("Write {")
 
         root_first, root_last = self._parse_root_frame_range(content)
 
         write_nodes = []
-        for block in content.split("Write {")[1:]:
-            end_idx = block.find("\n}")
+        for block in blocks[1:]:
+            end_idx = self._find_block_end(block)
             if end_idx != -1:
                 block = block[:end_idx]
             name = self._extract_attribute(block, "name") or "Write"
@@ -82,12 +84,23 @@ class NukeScriptParser:
         if len(parts) < 2:
             return 1, 1
         root_block = parts[1]
-        end_idx = root_block.find("\n}")
+        end_idx = self._find_block_end(root_block)
         if end_idx != -1:
             root_block = root_block[:end_idx]
         first = self._parse_int(self._extract_attribute(root_block, "first_frame"), 1)
         last = self._parse_int(self._extract_attribute(root_block, "last_frame"), 1)
         return first, last
+
+    def _find_block_end(self, text):
+        depth = 1
+        for i, ch in enumerate(text):
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    return i
+        return -1
 
     def _extract_attribute(self, text, attr_name):
         for line in text.split("\n"):
@@ -116,7 +129,6 @@ class BatchRenderTool(QtWidgets.QMainWindow):
         self.node_models = []
         self.parser = NukeScriptParser()
         self.nuke_path = ""
-        self.non_commercial_mode = False
         self.setup_ui()
 
     def setup_ui(self):
@@ -132,13 +144,6 @@ class BatchRenderTool(QtWidgets.QMainWindow):
         self.nuke_path_btn.clicked.connect(self.browse_nuke_executable)
         nuke_path_layout.addWidget(self.nuke_path_btn)
         main_layout.addLayout(nuke_path_layout)
-
-        nc_layout = QtWidgets.QHBoxLayout()
-        self.nc_checkbox = QtWidgets.QCheckBox("Non-Commercial Mode (--nc)")
-        self.nc_checkbox.stateChanged.connect(self.toggle_non_commercial)
-        nc_layout.addWidget(self.nc_checkbox)
-        nc_layout.addStretch()
-        main_layout.addLayout(nc_layout)
 
         files_group = QtWidgets.QGroupBox("Nuke Script Files")
         files_layout = QtWidgets.QVBoxLayout()
@@ -217,7 +222,7 @@ class BatchRenderTool(QtWidgets.QMainWindow):
     def add_nuke_files(self):
         files, _ = QtWidgets.QFileDialog.getOpenFileNames(
             self, "Select Nuke Script Files", "",
-            "Nuke Files (*.nk *.nknc);;Nuke Scripts (*.nk);;Nuke Non-Commercial (*.nknc);;All Files (*.*)"
+            "Nuke Scripts (*.nk);;All Files (*.*)"
         )
         for file_path in files:
             if file_path not in self.nuke_files:
@@ -238,25 +243,6 @@ class BatchRenderTool(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.warning(self, "Error", "No Nuke files selected!")
             return
 
-        nc_files = [f for f in self.nuke_files if f.lower().endswith('.nknc')]
-        if nc_files and not self.non_commercial_mode:
-            reply = QtWidgets.QMessageBox.question(
-                self, "Non-Commercial Script Detected",
-                f"Detected {len(nc_files)} Non-Commercial script(s) (.nknc).\n\n"
-                "Non-Commercial scripts require the '--nc' flag to render.\n\n"
-                "Do you want to enable Non-Commercial Mode?",
-                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-                QtWidgets.QMessageBox.Yes
-            )
-            if reply == QtWidgets.QMessageBox.Yes:
-                self.nc_checkbox.setChecked(True)
-            else:
-                QtWidgets.QMessageBox.warning(
-                    self, "Warning",
-                    "Non-Commercial scripts may fail to render without '--nc' flag.\n"
-                    "You can enable Non-Commercial Mode manually using the checkbox."
-                )
-
         self.node_models = []
         for script_file in self.nuke_files:
             for node in self.parser.parse_nuke_file(script_file):
@@ -271,6 +257,13 @@ class BatchRenderTool(QtWidgets.QMainWindow):
                     'last_frame': node['last_frame'],
                 })
         self.update_table()
+
+        if not self.node_models:
+            QtWidgets.QMessageBox.warning(
+                self, "No Write Nodes Found",
+                "No Write nodes were found in the selected script(s).\n"
+                "Make sure the files are valid Nuke scripts containing Write nodes."
+            )
 
     def update_table(self):
         self.table.blockSignals(True)
@@ -316,13 +309,8 @@ class BatchRenderTool(QtWidgets.QMainWindow):
             except (ValueError, AttributeError):
                 pass
 
-    def toggle_non_commercial(self, state):
-        self.non_commercial_mode = (state == QtCore.Qt.Checked)
-
     def _build_render_cmd(self, node):
         cmd = [self.nuke_path]
-        if self.non_commercial_mode:
-            cmd.append('--nc')
         cmd.extend(['-F', f"{node['first_frame']}-{node['last_frame']}", '-i', '-X', node['name'], node['script']])
         return cmd
 
